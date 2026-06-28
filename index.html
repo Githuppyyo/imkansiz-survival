@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>İMKANSIZ SURVIVAL</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{overflow:hidden;background:#000;font-family:Arial,sans-serif;cursor:crosshair}
+#info{position:fixed;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;z-index:999;background:#000}
+canvas{display:block}
+#ui{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10}
+#crosshair{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);color:#fff;font-size:28px;pointer-events:none;z-index:11;opacity:0.6;text-shadow:0 0 6px #000}
+.stat-bar-bg{position:absolute;left:20px;height:20px;border-radius:4px;background:rgba(0,0,0,0.7);pointer-events:none;border:1px solid rgba(255,255,255,0.1)}
+.stat-bar{position:absolute;left:20px;height:20px;border-radius:4px;transition:width .3s;pointer-events:none}
+.stat-label{position:absolute;left:20px;color:#fff;font-size:12px;font-weight:bold;text-shadow:0 0 6px #000;pointer-events:none}
+#wave-display{position:fixed;top:30px;left:50%;transform:translateX(-50%);color:#ff4444;font-size:34px;font-weight:bold;text-shadow:0 0 20px rgba(255,0,0,0.5);pointer-events:none;z-index:12}
+#timer{position:fixed;top:75px;left:50%;transform:translateX(-50%);color:#aaa;font-size:15px;pointer-events:none;z-index:12}
+#notification{position:fixed;top:38%;left:50%;transform:translate(-50%,-50%);color:#fff;font-size:26px;font-weight:bold;text-shadow:0 0 20px #000;pointer-events:none;z-index:15;opacity:0;transition:opacity .3s}
+#gameover{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.88);display:none;flex-direction:column;align-items:center;justify-content:center;z-index:100;pointer-events:auto}
+#gameover h1{color:#ff0000;font-size:52px;margin-bottom:20px;text-shadow:0 0 30px rgba(255,0,0,0.3)}
+#gameover p{color:#fff;font-size:20px;margin-bottom:25px;text-align:center;line-height:1.6}
+#gameover button{padding:14px 50px;font-size:20px;margin:8px;border:none;border-radius:8px;cursor:pointer;font-weight:bold}
+#gameover .restart{background:#cc0000;color:#fff}
+#gameover .menu{background:#444;color:#ccc}
+#startScreen{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.94);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:200;pointer-events:auto}
+#startScreen h1{color:#ff2222;font-size:56px;margin-bottom:8px;text-shadow:0 0 50px rgba(255,0,0,0.2)}
+#startScreen h2{color:#666;font-size:16px;margin-bottom:30px;font-weight:normal}
+#startScreen .ctrl{color:#888;font-size:13px;line-height:2.2;margin-bottom:30px;text-align:center}
+#startScreen .ctrl kbd{color:#fff;background:rgba(255,255,255,0.08);padding:2px 12px;border-radius:4px;border:1px solid rgba(255,255,255,0.1)}
+#startScreen .btn-start{padding:18px 70px;font-size:26px;border:none;border-radius:10px;cursor:pointer;font-weight:bold;background:#cc0000;color:#fff}
+#startScreen .btn-start:hover{background:#ee0000}
+#damageOverlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,0,0,0.4);pointer-events:none;z-index:9;opacity:0;transition:opacity .1s}
+</style>
+</head>
+<body>
+
+<div id="info">Yükleniyor...</div>
+
+<div id="startScreen">
+<h1>İMKANSIZ SURVIVAL</h1>
+<h2>Ne kadar uzun hayatta kalabilirsin?</h2>
+<div class="ctrl">
+<kbd>W A S D</kbd> Hareket &nbsp;&nbsp; <kbd>Shift</kbd> Koş &nbsp;&nbsp; <kbd>Sol Tık</kbd> Saldır<br>
+<kbd>E</kbd> Topla &nbsp;&nbsp; <kbd>Space</kbd> Zıpla &nbsp;&nbsp; <kbd>R</kbd> Yeniden Başla
+</div>
+<button class="btn-start" onclick="startGame()">BAŞLA</button>
+</div>
+
+<div id="gameover">
+<h1>ÖLDÜN</h1>
+<p id="gameoverText"></p>
+<button class="restart" onclick="restartGame()">R - Yeniden Başla</button>
+<button class="menu" onclick="document.getElementById('gameover').style.display='none';document.getElementById('startScreen').style.display='flex'">Ana Menü</button>
+</div>
+
+<div id="damageOverlay"></div>
+<div id="crosshair">+</div>
+
+<div id="ui">
+<div id="wave-display"></div>
+<div id="timer"></div>
+<div class="stat-bar-bg" style="bottom:72px;width:300px"></div>
+<div class="stat-bar" id="healthBar" style="bottom:72px;width:300px;background:#cc0000"></div>
+<div class="stat-label" style="bottom:96px">SAĞLIK</div>
+<div class="stat-bar-bg" style="bottom:46px;width:300px"></div>
+<div class="stat-bar" id="hungerBar" style="bottom:46px;width:300px;background:#cc8800"></div>
+<div class="stat-label" style="bottom:70px">AÇLIK</div>
+<div class="stat-bar-bg" style="bottom:20px;width:300px"></div>
+<div class="stat-bar" id="thirstBar" style="bottom:20px;width:300px;background:#0066cc"></div>
+<div class="stat-label" style="bottom:44px">SUSUZLUK</div>
+</div>
+<div id="notification"></div>
+
+<script>
+// ===== Three.js yüklemesi =====
+const threeScript = document.createElement('script');
+threeScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+threeScript.onload = function() {
+document.getElementById('info').style.display = 'none';
+initThree();
+};
+threeScript.onerror = function() {
+document.getElementById('info').textContent = 'Three.js yüklenemedi! İnternet bağlantını kontrol et.';
+};
+document.head.appendChild(threeScript);
+
+// ===== OYUN =====
+let scene, camera, renderer;
+let playerPos = new THREE.Vector3(0,0.5,0);
+let playerYaw = 0, playerPitch = 0;
+let velocity = new THREE.Vector3();
+let onGround = true;
+let keys = {}, mouseDown = false;
+let gameRunning = false, isGameOver = false, gameTime = 0, wave = 1, difficulty = 1, waveTimer = 3;
+let attackCD = 0;
+let enemies = [], resources = [], obstacles = [];
+let clock = new THREE.Clock();
+let notifTimeout = null;
+
+let stats = { health:100, hunger:100, thirst:100, stamina:100, maxHealth:100, maxHunger:100, maxThirst:100, maxStamina:100 };
+
+function startGame() {
+document.getElementById('startScreen').style.display='none';
+document.getElementById('crosshair').style.display='block';
+gameRunning = true;
+isGameOver = false;
+document.body.requestPointerLock();
+}
+
+function restartGame() {
+document.getElementById('gameover').style.display='none';
+if(renderer) renderer.domElement.style.display='block';
+enemies.forEach(e=>scene.remove(e.mesh));
+resources.forEach(r=>scene.remove(r.mesh));
+enemies=[]; resources=[];
+wave=1; difficulty=1; gameTime=0; waveTimer=3; attackCD=0;
+stats={health:100,hunger:100,thirst:100,stamina:100,maxHealth:100,maxHunger:100,maxThirst:100,maxStamina:100};
+playerPos.set(0,0.5,0); velocity.set(0,0,0);
+updateUI();
+gameRunning=true; isGameOver=false;
+document.getElementById('wave-display').textContent='';
+document.getElementById('crosshair').style.display='block';
+document.body.requestPointerLock();
+}
+
+function gameOver(reason) {
+isGameOver=true; gameRunning=false;
+document.exitPointerLock();
+document.getElementById('gameover').style.display='flex';
+document.getElementById('gameoverText').innerHTML = reason+'<br><br>Süre: '+Math.floor(gameTime)+'s &nbsp;|&nbsp; Dalga: '+wave;
+document.getElementById('crosshair').style.display='none';
+}
+
+function showNotif(msg, color) {
+const el = document.getElementById('notification');
+el.textContent=msg; el.style.color=color; el.style.opacity='1';
+if(notifTimeout) clearTimeout(notifTimeout);
+notifTimeout=setTimeout(()=>el.style.opacity='0',1500);
+}
+
+function updateUI() {
+const s=stats;
+document.getElementById('healthBar').style.width=(s.health/s.maxHealth*300)+'px';
+document.getElementById('hungerBar').style.width=(s.hunger/s.maxHunger*300)+'px';
+document.getElementById('thirstBar').style.width=(s.thirst/s.maxThirst*300)+'px';
+document.getElementById('timer').innerHTML = 'Hayatta Kalma: '+Math.floor(gameTime)+'s | Dalga: '+wave;
+if(s.health<25) document.getElementById('healthBar').style.background='#ff0000';
+else if(s.health<50) document.getElementById('healthBar').style.background='#ff6600';
+else document.getElementById('healthBar').style.background='#cc0000';
+}
+
+function initThree() {
+scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0a12);
+scene.fog = new THREE.FogExp2(0x0a0a12, 0.012);
+
+camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 100);
+camera.position.set(0, 0.8, 0);
+
+renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.prepend(renderer.domElement);
+
+// Işık
+const ambient = new THREE.AmbientLight(0x222244, 0.4);
+scene.add(ambient);
+const dirLight = new THREE.DirectionalLight(0xff8844, 0.6);
+dirLight.position.set(30,50,20);
+dirLight.castShadow = true;
+scene.add(dirLight);
+const fill = new THREE.DirectionalLight(0x4444ff, 0.2);
+fill.position.set(-20,10,-30);
+scene.add(fill);
+
+// Zemin
+const gMat = new THREE.MeshStandardMaterial({ color:0x1a1a1a, roughness:0.9 });
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(120,120), gMat);
+ground.rotation.x = -Math.PI/2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// Duvarlar
+const wMat = new THREE.MeshStandardMaterial({ color:0x333340, roughness:0.7 });
+const hw = 59;
+function wall(x,y,z,sx,sy,sz) {
+const m = new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), wMat);
+m.position.set(x,y,z); m.castShadow=true; m.receiveShadow=true;
+scene.add(m); obstacles.push(m);
+}
+wall(0,1.75,-hw,120,3.5,0.5);
+wall(0,1.75,hw,120,3.5,0.5);
+wall(-hw,1.75,0,0.5,3.5,120);
+wall(hw,1.75,0,0.5,3.5,120);
+
+// Engeller
+for(let i=0;i<100;i++) {
+const h=0.5+Math.random()*3, w=0.5+Math.random()*2, d=0.5+Math.random()*2;
+const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d),
+new THREE.MeshStandardMaterial({color:new THREE.Color().setHSL(0.7+Math.random()*0.1,0.1,0.1+Math.random()*0.15)}));
+let pos;
+for(let a=0;a<10;a++){
+pos=new THREE.Vector3((Math.random()-0.5)*108, h/2, (Math.random()-0.5)*108);
+if(Math.abs(pos.x)>2||Math.abs(pos.z)>2) break;
+}
+m.position.copy(pos); m.rotation.y=Math.random()*6.28;
+m.castShadow=true; m.receiveShadow=true;
+scene.add(m); obstacles.push(m);
+}
+
+// Kaynak spawn
+for(let i=0;i<8;i++) spawnResource();
+
+// Event listeners
+document.addEventListener('keydown', e=>{ keys[e.code]=true; if(e.code==='KeyR'&&isGameOver) restartGame(); });
+document.addEventListener('keyup', e=>{ keys[e.code]=false; });
+document.addEventListener('mousemove', e=>{
+if(document.pointerLockElement!==document.body) return;
+playerYaw -= e.movementX*0.002;
+playerPitch -= e.movementY*0.002;
+playerPitch = Math.max(-1.3, Math.min(1.3, playerPitch));
+});
+document.addEventListener('mousedown', e=>{ if(e.button===0&&gameRunning){mouseDown=true; if(document.pointerLockElement!==document.body) document.body.requestPointerLock();} });
+document.addEventListener('mouseup', e=>{ if(e.button===0) mouseDown=false; });
+document.addEventListener('contextmenu', e=>e.preventDefault());
+window.addEventListener('resize', ()=>{if(renderer){renderer.setSize(window.innerWidth,window.innerHeight);camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();}});
+
+// Oyun döngüsü
+animate();
+}
+
+function spawnResource() {
+if(resources.length>=10) return;
+const type = Math.random()>0.5?'food':'water';
+const s=0.35;
+const geo = type==='food' ? new THREE.BoxGeometry(s,s,s) : new THREE.CylinderGeometry(s/2,s/2,s,8);
+const mat = new THREE.MeshStandardMaterial({
+color: type==='food'?0x44dd44:0x4499dd,
+emissive: type==='food'?0x224422:0x224466,
+emissiveIntensity:0.3
+});
+const mesh = new THREE.Mesh(geo,mat);
+let pos;
+for(let a=0;a<10;a++){
+pos = new THREE.Vector3((Math.random()-0.5)*80, 0.3, (Math.random()-0.5)*80);
+if(Math.abs(pos.x)>3||Math.abs(pos.z)>3) break;
+}
+mesh.position.copy(pos);
+mesh.rotation.set(Math.random()*6.28, Math.random()*6.28, 0);
+scene.add(mesh);
+const amount = (8+Math.random()*5)/(1+difficulty*0.3);
+resources.push({mesh,type,amount,origY:pos.y});
+}
+
+function spawnEnemy() {
+const angle = Math.random()*6.28, dist = 12+Math.random()*18;
+const pos = new THREE.Vector3(playerPos.x+Math.cos(angle)*dist, 0.5, playerPos.z+Math.sin(angle)*dist);
+const h = 1.5+Math.random()*0.5;
+const hue = Math.min(1, wave*0.015);
+const mat = new THREE.MeshStandardMaterial({
+color: new THREE.Color().setHSL(hue,0.8,0.3),
+emissive: new THREE.Color().setHSL(hue,0.8,0.1),
+emissiveIntensity:0.5
+});
+const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.4,h,6), mat);
+mesh.position.copy(pos);
+mesh.position.y = h/2;
+mesh.castShadow = true;
+scene.add(mesh);
+enemies.push({mesh,pos,height:h,speed:3+wave*0.3+Math.random()*0.5,hp:2+wave*0.15,dmg:12+wave*1.8,attackTimer:0});
+}
+
+function animate() {
+requestAnimationFrame(animate);
+if(!gameRunning&&!isGameOver) return;
+const dt = Math.min(clock.getDelta(), 0.05);
+
+// Oyun çalışıyor mu kontrol
+if(!gameRunning) { renderer.render(scene, camera); return; }
+
+gameTime += dt;
+
+// Stats azalma
+stats.hunger -= 2.5*(1+difficulty*0.25)*dt;
+stats.thirst -= 3.5*(1+difficulty*0.25)*dt;
+if(stats.hunger<=0||stats.thirst<=0) stats.health -= 6*difficulty*dt;
+stats.hunger = Math.max(0,stats.hunger);
+stats.thirst = Math.max(0,stats.thirst);
+if(stats.health<=0) gameOver('Açlık/Susuzluk seni buldu!');
+
+// Stamina
+if(keys['ShiftLeft']||keys['ShiftRight']) {
+stats.stamina = Math.max(0, stats.stamina-15*dt);
+} else {
+stats.stamina = Math.min(stats.maxStamina, stats.stamina+8*dt);
+}
+
+// Hareket
+const mx = new THREE.Vector3();
+if(keys['KeyW']||keys['ArrowUp']) mx.z -= 1;
+if(keys['KeyS']||keys['ArrowDown']) mx.z += 1;
+if(keys['KeyA']||keys['ArrowLeft']) mx.x -= 1;
+if(keys['KeyD']||keys['ArrowRight']) mx.x += 1;
+mx.normalize();
+
+const isSprint = (keys['ShiftLeft']||keys['ShiftRight']) && stats.stamina>3;
+const spd = (mx.length()>0) ? (isSprint ? 8 : 4) : 0;
+
+const fwd = new THREE.Vector3(-Math.sin(playerYaw),0,-Math.cos(playerYaw));
+const rgt = new THREE.Vector3(fwd.z,0,-fwd.x);
+const move = new THREE.Vector3().addScaledVector(fwd,-mx.z).addScaledVector(rgt,mx.x).multiplyScalar(spd*dt);
+velocity.x = move.x;
+velocity.z = move.z;
+
+// Zıplama
+if(keys['Space'] && onGround) { velocity.y=5; onGround=false; }
+
+// Yerçekimi
+velocity.y -= 20*dt;
+playerPos.add(velocity);
+if(playerPos.y<0.5) { playerPos.y=0.5; velocity.y=0; onGround=true; }
+
+// Duvar çarpışma
+const hw=58;
+playerPos.x = Math.max(-hw+0.3, Math.min(hw-0.3, playerPos.x));
+playerPos.z = Math.max(-hw+0.3, Math.min(hw-0.3, playerPos.z));
+
+// Engel çarpışma
+for(let o of obstacles) {
+if(o.geometry.type==='BoxGeometry') {
+const sz = new THREE.Vector3();
+o.geometry.boundingBox.getSize(sz);
+const hw2 = sz.x*o.scale.x/2/2 + 0.25;
+const hd = sz.z*o.scale.z/2/2 + 0.25;
+const dx = playerPos.x - o.position.x;
+const dz = playerPos.z - o.position.z;
+if(Math.abs(dx)<hw2 && Math.abs(dz)<hd) {
+if(Math.abs(dx/hw2) > Math.abs(dz/hd)) playerPos.x = o.position.x + Math.sign(dx)*hw2;
+else playerPos.z = o.position.z + Math.sign(dz)*hd;
+}
+}
+}
+
+// Kamera
+camera.position.set(playerPos.x, playerPos.y+0.3, playerPos.z);
+camera.rotation.order = 'YXZ';
+camera.rotation.y = playerYaw;
+camera.rotation.x = playerPitch;
+
+// Saldırı
+attackCD -= dt;
+if(mouseDown && attackCD<=0) {
+attackCD = 0.4;
+const dir = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+const origin = camera.position.clone();
+let hit = null, best = 5;
+for(let e of enemies) {
+const toE = new THREE.Vector3().copy(e.pos).sub(origin);
+const d = toE.length();
+if(d<best && dir.dot(toE.normalize())>0.85) { best=d; hit=e; }
+}
+if(hit) {
+hit.hp -= 1;
+const kb = new THREE.Vector3().copy(hit.pos).sub(playerPos).normalize();
+kb.y = 0.2; hit.pos.add(kb.multiplyScalar(1.5));
+if(hit.hp<=0) { scene.remove(hit.mesh); enemies.splice(enemies.indexOf(hit),1); }
+}
+const flash = document.getElementById('damageOverlay');
+flash.style.opacity='0.08';
+setTimeout(()=>flash.style.opacity='0',50);
+}
+
+// Dalga
+waveTimer -= dt;
+if(waveTimer<=0 && !isGameOver) {
+wave++; difficulty = 1+(wave-1)*0.25;
+document.getElementById('wave-display').textContent = '!!! DALGA '+wave+' !!!';
+showNotif('DALGA '+wave+'!','#ff4444');
+setTimeout(()=>{
+if(!isGameOver) document.getElementById('wave-display').textContent = 'DALGA '+wave;
+}, 2000);
+const cnt = Math.floor(2+wave*1.8);
+for(let i=0;i<cnt;i++) spawnEnemy();
+waveTimer = 4+wave*0.5;
+}
+
+// Kaynak
+if(resources.length<8) spawnResource();
+
+// Düşman güncelle
+for(let i=enemies.length-1;i>=0;i--) {
+const e = enemies[i];
+const dir = new THREE.Vector3().copy(playerPos).sub(e.pos);
+dir.y = 0;
+const dist = dir.length();
+if(dist>0.3) {
+dir.normalize();
+e.pos.x += dir.x*e.speed*dt;
+e.pos.z += dir.z*e.speed*dt;
+}
+e.pos.x = Math.max(-hw+0.3, Math.min(hw-0.3, e.pos.x));
+e.pos.z = Math.max(-hw+0.3, Math.min(hw-0.3, e.pos.z));
+e.mesh.position.copy(e.pos);
+e.mesh.position.y = e.height/2;
+e.mesh.lookAt(new THREE.Vector3(playerPos.x, e.pos.y, playerPos.z));
+
+e.attackTimer -= dt;
+if(dist<2 && e.attackTimer<=0) {
+e.attackTimer = 0.5;
+stats.health -= e.dmg*dt*2;
+document.getElementById('damageOverlay').style.opacity='0.25';
+setTimeout(()=>document.getElementById('damageOverlay').style.opacity='0',100);
+if(stats.health<=0) gameOver('Düşmanlara yenildin!');
+}
+}
+
+// Kaynak güncelle
+for(let r of resources) {
+r.mesh.position.y = r.origY + Math.sin(gameTime*2+r.mesh.position.x)*0.05;
+r.mesh.rotation.y += dt;
+}
+
+// E tuşu ile topla
+if(keys['KeyE']) {
+keys['KeyE']=false;
+let near=null, best=2.5;
+for(let r of resources) {
+const d = new THREE.Vector3().copy(r.mesh.position).sub(playerPos).length();
+if(d<best) { best=d; near=r; }
+}
+if(near) {
+let ok=false;
+if(near.type==='food' && stats.hunger<stats.maxHunger) {
+stats.hunger=Math.min(stats.maxHunger, stats.hunger+near.amount);
+stats.health=Math.min(stats.maxHealth, stats.health+near.amount*0.3);
+showNotif('+Yiyecek','#44dd44');
+ok=true;
+} else if(near.type==='water' && stats.thirst<stats.maxThirst) {
+stats.thirst=Math.min(stats.maxThirst, stats.thirst+near.amount);
+stats.health=Math.min(stats.maxHealth, stats.health+near.amount*0.2);
+showNotif('+Su','#4499dd');
+ok=true;
+} else showNotif('Dolusun!','#ffcc00');
+scene.remove(near.mesh);
+resources.splice(resources.indexOf(near),1);
+}
+}
+
+updateUI();
+renderer.render(scene, camera);
+}
+</script>
+</body>
+</html>
